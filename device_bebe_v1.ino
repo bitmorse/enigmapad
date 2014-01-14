@@ -29,7 +29,13 @@ void setup(){
 	   	flags=d: the message received an ACK when it was sent
 	   	flags=r: this message id was received and decrypted, marks this pad as "DO NOT RE-USE"
 
-	*/
+	*/  
+
+	//attach audio receive interrupt port 
+	attachInterrupt(0, receiveAudio, RISING);
+
+
+
 }
 
 void loop(){	
@@ -48,8 +54,6 @@ void loop(){
 	      	// decode audio to binary, once end sequence is received, stop listening
 	      	// send ACK [receivedID 0-65556] onto the wire
 	      	// XOR with the matching envelope ID
-
-	      //when 
 
 	      break;
 
@@ -75,8 +79,16 @@ void loop(){
 	      break;
 
 	    default:
-	      // idle
+	      // listen for audio and buffer if the START sequence is seen
+
+	      // if "new message" button was pressed, 
+
 	      break;
 	}
    
+}
+
+
+void receiveAudio(){
+	intState = 0;
 }
