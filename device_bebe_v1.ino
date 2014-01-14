@@ -5,6 +5,7 @@
 // 2kB EEPROM
 // 64kB FLASH ("Sketch Storage")
 
+int intState;
 
 void setup(){
 	//setup bucket with envelopes
@@ -34,20 +35,19 @@ void setup(){
 	//attach audio receive interrupt port 
 	attachInterrupt(0, receiveAudio, RISING);
 
-
-
+	//interrupt and change state if "new message" button was pressed
+	attachInterrupt(1, newButtonPressed, RISING);
 }
 
-void loop(){	
-
-	//state  
-	int intState = 0;
+void loop(){
 
 	switch (intState){
 	    case 0:
+	   	  // listen for audio and buffer if the START sequence is seen
+
 	      // while receive audio
 	      	/*	
-	      		0101010101010101 			  0000000000000000 			    0000000000000000000000000.....
+	      		1010101010101010			  0000000000000000 			    0000000000000000000000000.....
 				[START sequence] [100ms wait] [  ID 0-65536  ] [100ms wait] [ bitstream 140x8b = 1120kBit]
 				
 	      	*/
@@ -79,7 +79,6 @@ void loop(){
 	      break;
 
 	    default:
-	      // listen for audio and buffer if the START sequence is seen
 
 	      // if "new message" button was pressed, 
 
@@ -91,4 +90,8 @@ void loop(){
 
 void receiveAudio(){
 	intState = 0;
+}
+
+void newButtonPressed(){
+	intState = 2;
 }
