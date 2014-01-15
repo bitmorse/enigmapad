@@ -24,5 +24,8 @@
 ###PCB Layout
 ...
 
+###3D Printable Case
+- Target Size: 85mm (l) x 57mm (w) x 40mm (h) (without keyboard)
+
 ###Setup
 ...
