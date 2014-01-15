@@ -29,3 +29,8 @@
 
 ###Setup
 ...
+
+
+###References
+- http://sanguino.cc/breadboardsanguino
+
