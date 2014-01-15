@@ -1,6 +1,6 @@
 #Enigmapad - an OTP secured communication device
 
-- Secures your communication from eavesdropping with the single truly http://en.wikipedia.org/wiki/One_time_pad unbreakable cipher method OTP
+- Secures your communication from eavesdropping with the single truly [unbreakable](http://en.wikipedia.org/wiki/One_time_pad) cipher method OTP (when properly used)
 - Enigmapad has a built in screen and keyboard and offers a chat like interface
 - Works over any common audio line (telephone, walkie talkie, skype)
 - Requires physical one time pad setup assisted by a RNG device of choice (e.g. geiger). Each pad is used once hence *One Time* Pad.
