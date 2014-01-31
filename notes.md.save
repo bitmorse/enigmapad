@@ -1,0 +1,2 @@
+- programming the atmega644 with arduino is done with SPI (mosi,miso,sck,rst) http://arduino.cc/en/Tutorial/ArduinoISP
+- fritzing sucks at autorouting
