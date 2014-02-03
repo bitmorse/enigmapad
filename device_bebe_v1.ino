@@ -6,6 +6,7 @@
 // 2kB EEPROM
 // 64kB FLASH ("Sketch Storage")
 #include <stdarg.h>
+#include <stdlib.h>
 #include <Arduino.h>
 #include <DS1307.h> //TinyRTC
 #include <Wire.h> //TinyRTC dependancy
@@ -178,6 +179,43 @@ void LcdWrite(byte dc, byte data)
   digitalWrite(PIN_SCE, HIGH);
 }
 
+// gotoXY routine to position cursor 
+// x - range: 0 to 84
+// y - range: 0 to 5
+
+void gotoXY(int x, int y)
+{
+  LcdWrite( 0, 0x80 | x);  // Column.
+  LcdWrite( 0, 0x40 | y);  // Row.  
+
+}
+void drawLine(void)
+{
+  unsigned char  j;  
+   for(j=0; j<84; j++) // top
+  {
+          gotoXY (j,0);
+    LcdWrite (1,0x01);
+  }   
+  for(j=0; j<84; j++) //Bottom
+  {
+          gotoXY (j,5);
+    LcdWrite (1,0x80);
+  }   
+
+  for(j=0; j<6; j++) // Right
+  {
+          gotoXY (83,j);
+    LcdWrite (1,0xff);
+  }   
+  for(j=0; j<6; j++) // Left
+  {
+          gotoXY (0,j);
+    LcdWrite (1,0xff);
+  }
+
+}
+
 
 // This makes analogRead() go faster.
 // Found at http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1208715493/11
@@ -189,16 +227,6 @@ void LcdWrite(byte dc, byte data)
 #endif
 
 int intState;
-
-// http://www.arduino.cc/playground/Main/Printf
-void p(const char *fmt, ... ) {
-  char tmp[128];
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(tmp, 128, fmt, args);
-  va_end(args);
-  Serial.print(tmp);
-}
 
 void setup(){
 	//setup bucket with envelopes
@@ -228,7 +256,7 @@ void setup(){
   //nokia LCD part
   LcdInitialise();
   LcdClear();
-  LcdString("device bebe ;)");
+  LcdString("device bebe");
 
 	/* open a serial terminal for debugging purposes */
 	Serial.begin(57600); 
@@ -243,206 +271,23 @@ void setup(){
 
 
 	//attach audio receive interrupt port 
-	//attachInterrupt(0, receiveAudio, RISING);
+	attachInterrupt(0, receiveAudio, RISING);
 
 	//interrupt and change state if "new message" button was pressed
 	attachInterrupt(1, newButtonPressed, RISING);
+
+  pinMode(12,OUTPUT);//slope indicator
 }
 
-const int LOW_THRESHOLD = 0;
-const int HIGH_THRESHOLD = 360;
-
-
-inline bool readBit() {
-  while (true) {
-    int a = analogRead(A0);
-    if (a <= LOW_THRESHOLD) {
-      return false;
-    }
-    if (a >= HIGH_THRESHOLD) {
-      return true;
-    }
-  }
-}
-
-inline void waitForFallingEdge() {
-  while (!readBit()) {
-  }
-  while (readBit()) {
-  }
-}
-
-inline void waitForRisingEdge() {
-  while (readBit()) {
-  }
-  while (!readBit()) {
-  }
-}
-
-float determine_frequency() {
-  const int SAMPLE_COUNT = 128;
-  unsigned long samples[SAMPLE_COUNT];
-
-  for (int i = 0; i < SAMPLE_COUNT; ++i) {
-    unsigned long t = micros();
-    waitForRisingEdge();
-    waitForFallingEdge();
-    samples[i] = micros() - t;
-  }
-  float total = 0;
-  for (int i = 0; i < SAMPLE_COUNT; ++i) {
-    total += samples[i];
-  }
-  float average = total / SAMPLE_COUNT;
-  float frequency = 1000000.0 / average;
-  return frequency;
-}
-
-
-bool is_weird_packet(uint8_t packet_number) {
-  return packet_number == 0 || packet_number == 129;
-}
-
-void hang() {
-  while (true) {
-  }
-}
-
-
-
+int prevData, prevprevData, newData, newPeak;
+int oldPeak = 0;
+int peakCount = 0;
+byte bReceived = B00000000;
+char edge;
 
 void loop(){
   LcdClear();
-  LcdString("device bebe ;)");
-	int intState = 0;
-
-
-			float frequency = determine_frequency();
-		  	unsigned long usec = 1000000 / frequency;
-		  	unsigned long usec_low = usec * 75 / 100;
-		  	unsigned long usec_high = usec * 150 / 100;
-
-		  	Serial.println(frequency);
-
-
-  enum {
-    READ_SYNC = 0,
-    READ_PROLOGUE,
-    READ_PACKET,
-    READ_EPILOGUE,
-  };
-  uint8_t state = READ_SYNC;
-
-  uint8_t packets_read = 0;
-
-  uint16_t simple_checksum = 0;
-  uint8_t packet_checksum = 0;
-  uint16_t total_packet_bytes_read = 0;
-
-  uint8_t byte = 0; // The register into which we shift bits.
-  int bit_count = 0; // How many bits we've shifted into the byte.
-
-  const int PACKET_SIZE = 256; // Size of the data packet.
-  uint8_t bytes[PACKET_SIZE];
-  unsigned long byte_count = 0;
-
-  unsigned long t = micros();
-  waitForRisingEdge();
-  while (true) {
-    waitForFallingEdge();
-
-    // Figure out how long it's been since the last falling edge. Knowing this
-    // number is the essence of BFSK. If it's above a certain number, that
-    // means we read a zero. Otherwise it's a one. (Or vice-versa, depending
-    // on the protocol.)
-    unsigned long now = micros();
-    unsigned long s = now - t;
-    t = now;
-    bool is_short = s > usec_low && s < usec_high;
-
-    // READ_SYNC solves the problem of not knowing which bit we're at relative
-    // to the start of the next byte. We sync up by reading a bunch of ones,
-    // then start shifting into the byte register after reading a zero.
-    if (state == READ_SYNC) {
-      if (!is_short) {
-        state = READ_PROLOGUE;
-      }
-      continue;
-    }
-
-    // Shift the bit into the register.
-    byte = byte >> 1;
-    byte |= is_short ? 0x80 : 0;
-
-    // Have we completed a byte?
-    if (++bit_count == 8) {
-      bit_count = 0;
-
-      if (state == READ_PROLOGUE) {
-        /*if (byte != 0xA9) { //read start sequence
-          p("Error: expected READ_PROLOGUE 0xA9, but got %02x.\n", char);
-          hang();
-        }*/
-
-        // Prologue was good. Flip on the LED and switch to the packet-reading
-        // state.
-        digitalWrite(13, HIGH);
-        state = READ_PACKET;
-        packet_checksum = 0;
-
-        continue;
-      }
-
-      // The remaining states all want to remember the bytes read, so store
-      // the one we just completed in the byte buffer.
-      bytes[byte_count++] = byte;
-      Serial.println((char)byte);
-
-
-      if (state == READ_PACKET) {
-
-        // To further confirm that our proof of concept works, we use a
-        // very simple (and quick) checksum.
-        //
-        // For firmware 0201, decoded length 33024 bytes and
-        // shasum 4f1cbd041a166565b654c1ebe50562bf380305d4, the output should
-        // be 16330, calculated with the Python script included with this file.
-        // We exclude so-called "weird" packets from the checksum.
-        //
-        // We don't count the first/last packet in the checksum or total bytes,
-        // because they aren't considered part of the firmware file.
-        bool is_weird = is_weird_packet(packets_read);
-        if (!is_weird) {
-          simple_checksum += byte;
-          packet_checksum += byte;
-          ++total_packet_bytes_read;
-        }
-
-        // Have we completed a packet?
-        if (byte_count == PACKET_SIZE) {
-          digitalWrite(13, LOW);
-          byte_count = 0;
-          if (is_weird) {
-            // For some reason, the first packet (the one containing
-            // "KORG SYSTEM FILE") and the last packet don't have an epilogue.
-            // So go straight to waiting for the next packet to start.
-            state = READ_SYNC;
-          } else {
-            state = READ_EPILOGUE;
-          }
-
-          if (++packets_read == 129) { //total packets
-            p("Successfully read %d packets. Checksum %u. "
-              "Firmware bytes %u.\n", packets_read, simple_checksum,
-              total_packet_bytes_read);
-            hang();
-          }
-          continue;
-        }
-      }
-   }}
-
-
+  gotoXY(0,0);
 
 	switch (intState){
 	    case 0:
@@ -457,7 +302,31 @@ void loop(){
 	      	// decode audio to binary, once end sequence is received, stop listening
 	      	// send ACK [receivedID 0-65556] onto the wire
 	      	// XOR with the matching envelope ID
-			
+        //LcdCharacter((char)edge);
+        //LcdClear();
+        //LcdCharacter('.');
+
+        //10 b/s == 0.1s/b => peakCount per LOW = 120, per HIGH = 220
+
+        if(peakCount > 120 && (oldPeak - newPeak) == 8){ //1200Hz => T = 0.000833333s
+          //register a 0
+          peakCount = 0;
+          //shift bit in receive byte by 1
+          bReceived = bReceived << 1;
+        }
+
+        if(peakCount > 220 && (oldPeak - newPeak) == 4){ //2200Hz => T = 0.000454545s
+          //register a 1
+          peakCount = 0;
+          //shift bit in receive byte by 1 and add 1
+          bReceived = bReceived << 1;
+          bReceived = (bReceived + B00000001);
+
+        }
+
+        //write every completed byte into eeprom
+
+
 
 	      break;
 
@@ -492,6 +361,17 @@ void loop(){
 
 void receiveAudio(){
 	intState = 0;
+
+  prevprevData = prevData;
+  prevData = newData;//store previous value
+  newData = analogRead(0);;//get value from A0
+  if (newData < prevData && newData > prevprevData){//if positive slope
+    //peak
+    peakCount++;
+    oldPeak = newPeak;
+    newPeak = micros();
+  }
+
 }
 
 void newButtonPressed(){
