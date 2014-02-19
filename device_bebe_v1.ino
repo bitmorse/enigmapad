@@ -8,10 +8,10 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <Arduino.h>
-#include <DS1307.h> //TinyRTC
+/*#include <DS1307.h> //TinyRTC
 #include <Wire.h> //TinyRTC dependancy
 #include <OneWire.h> //TinyRTC dependancy
-
+*/
 
 
 //LCD part
@@ -279,15 +279,14 @@ void setup(){
   pinMode(12,OUTPUT);//slope indicator
 }
 
-int prevData, prevprevData, newData, newPeak;
-int oldPeak = 0;
-int peakCount = 0;
-byte bReceived = B00000000;
-char edge;
+int audioInNew = 0, audioInOld = 0, audioInSlope = 0;
+bit[] bReceived;
+
 
 void loop(){
   LcdClear();
   gotoXY(0,0);
+
 
 	switch (intState){
 	    case 0:
@@ -307,6 +306,44 @@ void loop(){
         //LcdCharacter('.');
 
         //10 b/s == 0.1s/b => peakCount per LOW = 120, per HIGH = 220
+        
+        //sample for 1120bits
+        for(int i; i<1121; i++){
+          if(peakCount > 120){
+            //high bit
+            bReceived[i] = 1;
+
+          }else{
+            //low bit
+            bReceived[i] = 0;
+
+          }
+          peakCount = 0;
+          int startSampleBit = millis();
+          do{
+            //sample the waveform here
+            audioInOld = audioInNew;
+            audioInNew = analogRead(0);
+
+            //detect leading edge
+            if(audioInOld < audioInNew){
+              //leading
+              audioInSlope = 1;
+            }else{ 
+              if(audioInSlope == 1){
+                peakCount++;
+                //set to falling
+                audioInSlope = 0;
+              }
+            }
+            int timeSampleBit = millis() - startSampleBit;
+          }while(timeSampleBit >= 100);
+          //save the bit and go to next
+
+          //make a limit
+        }
+
+
 
         if(peakCount > 120 && (oldPeak - newPeak) == 8){ //1200Hz => T = 0.000833333s
           //register a 0
@@ -358,21 +395,6 @@ void loop(){
    
 }
 
-
-void receiveAudio(){
-	intState = 0;
-
-  prevprevData = prevData;
-  prevData = newData;//store previous value
-  newData = analogRead(0);;//get value from A0
-  if (newData < prevData && newData > prevprevData){//if positive slope
-    //peak
-    peakCount++;
-    oldPeak = newPeak;
-    newPeak = micros();
-  }
-
-}
 
 void newButtonPressed(){
 	intState = 2;
