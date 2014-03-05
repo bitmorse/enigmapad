@@ -258,20 +258,13 @@ void setup(){
   LcdClear();
   LcdString("device bebe");
 
-	/* open a serial terminal for debugging purposes */
-	Serial.begin(57600); 
-	delay(1000);
 
-	analogReference(INTERNAL);
+	//analogReference(INTERNAL);
 	// Set prescale to 16.
 	// See http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1208715493/11
 	sbi(ADCSRA,ADPS2);
 	cbi(ADCSRA,ADPS1);
 	cbi(ADCSRA,ADPS0);
-
-
-	//attach audio receive interrupt port 
-	attachInterrupt(0, receiveAudio, RISING);
 
 	//interrupt and change state if "new message" button was pressed
 	attachInterrupt(1, newButtonPressed, RISING);
@@ -279,16 +272,15 @@ void setup(){
   pinMode(12,OUTPUT);//slope indicator
 }
 
-int audioInNew = 0, audioInOld = 0, audioInSlope = 0;
-bit[] bReceived;
+int audioInNew = 0, audioInOld = 0, audioInSlope = 0, peakCount = 0, timeSampleBit = 0;
+bool bReceived[1120];
 
 
 void loop(){
   LcdClear();
   gotoXY(0,0);
 
-
-	switch (intState){
+  switch (intState) {
 	    case 0:
 	   	  // listen for audio and buffer if the START sequence is seen
 
@@ -308,15 +300,13 @@ void loop(){
         //10 b/s == 0.1s/b => peakCount per LOW = 120, per HIGH = 220
         
         //sample for 1120bits
-        for(int i; i<1121; i++){
+        for(int i; i<=1120; i++){
           if(peakCount > 120){
             //high bit
             bReceived[i] = 1;
-
           }else{
             //low bit
             bReceived[i] = 0;
-
           }
           peakCount = 0;
           int startSampleBit = millis();
@@ -327,41 +317,21 @@ void loop(){
 
             //detect leading edge
             if(audioInOld < audioInNew){
-              //leading
-              audioInSlope = 1;
+              //leading. increment the counter at least a couple of times to prevent wrong slope readings.
+              audioInSlope++; 
             }else{ 
-              if(audioInSlope == 1){
+              if(audioInSlope > 5){ //peak is detected if audio was sampled at least a few times
                 peakCount++;
                 //set to falling
                 audioInSlope = 0;
               }
             }
-            int timeSampleBit = millis() - startSampleBit;
+            timeSampleBit = millis() - startSampleBit;
           }while(timeSampleBit >= 100);
           //save the bit and go to next
 
-          //make a limit
         }
 
-
-
-        if(peakCount > 120 && (oldPeak - newPeak) == 8){ //1200Hz => T = 0.000833333s
-          //register a 0
-          peakCount = 0;
-          //shift bit in receive byte by 1
-          bReceived = bReceived << 1;
-        }
-
-        if(peakCount > 220 && (oldPeak - newPeak) == 4){ //2200Hz => T = 0.000454545s
-          //register a 1
-          peakCount = 0;
-          //shift bit in receive byte by 1 and add 1
-          bReceived = bReceived << 1;
-          bReceived = (bReceived + B00000001);
-
-        }
-
-        //write every completed byte into eeprom
 
 
 
